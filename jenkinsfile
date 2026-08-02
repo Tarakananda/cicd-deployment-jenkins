@@ -2,8 +2,20 @@
 pipeline {
 
     agent any
+
     environment {
+        DOCKERHUB_USERNAME = 'tarakananda'
+        IMAGE_NAME = 'nginx-app'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+
+        DOCKERHUB_CREDS = credentials('dockerhub-pass')
+
         PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
     }
 
     stages {
@@ -15,40 +27,65 @@ pipeline {
             }
         }
 
-        stage('Verify Files') {
+        stage('SonarQube Analysis') {
             steps {
-                echo 'Files downloaded from GitHub:'
-                sh 'ls -la'
+                echo 'Running SonarQube analysis...'
+
+                withSonarQubeEnv('SonarQube-Server') {
+                    sh '''
+                        sonar-scanner \
+                        -Dsonar.projectKey=nginx-app \
+                        -Dsonar.projectName=nginx-app \
+                        -Dsonar.sources=.
+                    '''
+                }
             }
         }
 
-        stage('Docker Check') {
+        stage('Quality Gate') {
             steps {
-                sh '''
-                    echo "Jenkins PATH:"
-                    echo $PATH
+                echo 'Waiting for SonarQube Quality Gate...'
 
-                    echo "Looking for Docker:"
-                    which docker || true
-
-                    echo "Checking common locations:"
-                    ls -l /usr/local/bin/docker || true
-                    ls -l /opt/homebrew/bin/docker || true
-                '''
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
 
         stage('Docker Build') {
             steps {
-                echo 'Building Nginx Docker image...'
-                sh 'docker build -t nginx-app:${BUILD_NUMBER} .'
+                echo 'Building Docker image...'
+
+                sh '''
+                    docker build \
+                    -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG} \
+                    -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest \
+                    .
+                '''
             }
         }
 
-        stage('Verify Docker Image') {
+        stage('Docker Login') {
             steps {
-                echo 'Verifying Docker image...'
-                sh 'docker images nginx-app'
+                echo 'Logging into DockerHub...'
+
+                sh '''
+                    echo "$DOCKERHUB_CREDS_PSW" | \
+                    docker login \
+                    -u "$DOCKERHUB_CREDS_USR" \
+                    --password-stdin
+                '''
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                echo 'Pushing Docker image to DockerHub...'
+
+                sh '''
+                    docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
+                '''
             }
         }
     }
@@ -56,12 +93,22 @@ pipeline {
     post {
 
         success {
-            echo 'CI Pipeline completed successfully!'
+            echo """
+            =================================
+            CI PIPELINE SUCCESSFUL
+            =================================
+
+            Docker image:
+            ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+            """
         }
 
         failure {
-            echo 'CI Pipeline failed!'
+            echo 'CI Pipeline Failed!'
+        }
+
+        always {
+            sh 'docker logout || true'
         }
     }
 }
-
