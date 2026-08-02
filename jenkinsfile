@@ -21,8 +21,17 @@ pipeline {
 
         stage('Docker Check') {
             steps {
-                echo 'Checking Docker installation...'
-                sh 'docker --version'
+                sh '''
+                    echo "Jenkins PATH:"
+                    echo $PATH
+
+                    echo "Looking for Docker:"
+                    which docker || true
+
+                    echo "Checking common locations:"
+                    ls -l /usr/local/bin/docker || true
+                    ls -l /opt/homebrew/bin/docker || true
+                '''
             }
         }
 
