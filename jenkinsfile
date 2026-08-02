@@ -27,18 +27,25 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
+    stage('SonarQube Analysis') {
+        steps {
+            script {
+                def scannerHome = tool 'SonarScanner'
+
+                echo "SonarScanner location: ${scannerHome}"
+
                 withSonarQubeEnv('SonarQube-Server') {
-                    sh '''
-                        sonar-scanner \
-                          -Dsonar.projectKey=nginx-app \
-                          -Dsonar.projectName=nginx-app \
-                          -Dsonar.sources=.
-                    '''
+                    sh """
+                        ${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=nginx-app \
+                        -Dsonar.projectName=nginx-app \
+                        -Dsonar.sources=.
+                    """
+                    }
                 }
             }
         }
+
 
         stage('Quality Gate') {
             steps {
