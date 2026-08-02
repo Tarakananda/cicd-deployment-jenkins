@@ -1,27 +1,7 @@
 ```groovy
 pipeline {
+
     agent any
-
-    tools {
-        maven 'Maven-3.9'
-        jdk 'JDK-17'
-    }
-
-    environment {
-        // DockerHub repository
-        DOCKERHUB_USERNAME = 'tarakananda'
-        IMAGE_NAME         = 'nginx'
-        IMAGE_TAG          = "${BUILD_NUMBER}"
-
-        // Jenkins Credentials ID
-        DOCKERHUB_CREDS    = credentials('dockerhub-pass')
-    }
-
-    options {
-        timestamps()
-        disableConcurrentBuilds()
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-    }
 
     stages {
 
@@ -32,90 +12,31 @@ pipeline {
             }
         }
 
-        stage('Maven Build') {
+        stage('Verify Files') {
             steps {
-                echo 'Building application using Maven...'
-                sh 'mvn clean compile'
+                echo 'Files downloaded from GitHub:'
+                sh 'ls -la'
             }
         }
 
-        stage('Unit Tests') {
+        stage('Docker Check') {
             steps {
-                echo 'Running unit tests...'
-                sh 'mvn test'
-            }
-
-            post {
-                always {
-                    junit allowEmptyResults: true,
-                          testResults: '**/target/surefire-reports/*.xml'
-                }
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                echo 'Running SonarQube static code analysis...'
-
-                withSonarQubeEnv('SonarQube-Server') {
-                    sh '''
-                        mvn sonar:sonar \
-                        -Dsonar.projectKey=my-java-app \
-                        -Dsonar.projectName=my-java-app
-                    '''
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Package Application') {
-            steps {
-                echo 'Creating application artifact...'
-                sh 'mvn package -DskipTests'
+                echo 'Checking Docker installation...'
+                sh 'docker --version'
             }
         }
 
         stage('Docker Build') {
             steps {
-                echo 'Building Docker image...'
-
-                sh '''
-                    docker build \
-                    -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG} \
-                    -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest \
-                    .
-                '''
+                echo 'Building Nginx Docker image...'
+                sh 'docker build -t nginx-app:${BUILD_NUMBER} .'
             }
         }
 
-        stage('Docker Login') {
+        stage('Verify Docker Image') {
             steps {
-                echo 'Authenticating with DockerHub...'
-
-                sh '''
-                    echo "$DOCKERHUB_CREDS_PSW" | \
-                    docker login \
-                    -u "$DOCKERHUB_CREDS_USR" \
-                    --password-stdin
-                '''
-            }
-        }
-
-        stage('Docker Push') {
-            steps {
-                echo 'Pushing Docker image to DockerHub...'
-
-                sh '''
-                    docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
-                    docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
-                '''
+                echo 'Verifying Docker image...'
+                sh 'docker images nginx-app'
             }
         }
     }
@@ -123,41 +44,12 @@ pipeline {
     post {
 
         success {
-            echo """
-            ========================================
-            PIPELINE SUCCESSFUL
-            ========================================
-
-            Docker Image:
-            ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
-
-            Latest:
-            ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
-            """
+            echo 'CI Pipeline completed successfully!'
         }
 
         failure {
-            echo '''
-            ========================================
-            PIPELINE FAILED
-            ========================================
-            Check the Jenkins console output.
-            '''
-        }
-
-        always {
-            sh 'docker logout || true'
-
-            sh """
-                docker image rm \
-                ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG} \
-                ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest \
-                || true
-            """
-
-            cleanWs()
+            echo 'CI Pipeline failed!'
         }
     }
 }
 ```
-
