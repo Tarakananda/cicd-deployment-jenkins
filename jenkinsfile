@@ -29,14 +29,12 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                echo 'Running SonarQube analysis...'
-
                 withSonarQubeEnv('SonarQube-Server') {
                     sh '''
                         sonar-scanner \
-                        -Dsonar.projectKey=nginx-app \
-                        -Dsonar.projectName=nginx-app \
-                        -Dsonar.sources=.
+                          -Dsonar.projectKey=nginx-app \
+                          -Dsonar.projectName=nginx-app \
+                          -Dsonar.sources=.
                     '''
                 }
             }
@@ -44,8 +42,6 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                echo 'Waiting for SonarQube Quality Gate...'
-
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
